@@ -7,14 +7,21 @@
 
     <ItemGroup>
         <Compile Include="Functional.fs" />
+        <Compile Include="Str.fs" />
         <Compile Include="Term.fs" />
+        <Compile Include="Department.fs" />
         <Compile Include="Http.fs" />
         <Compile Include="Fetch.fs" />
+        <Compile Include="Csv.fs" />
+        <Compile Include="Serialize.fs" />
+        <Compile Include="Args.fs" />
         <Compile Include="Program.fs" />
     </ItemGroup>
 
     <ItemGroup>
       <PackageReference Include="AngleSharp" Version="0.14.0" />
+      <PackageReference Include="CsvHelper" Version="26.0.0" />
+      <PackageReference Include="Newtonsoft.Json" Version="12.0.3" />
     </ItemGroup>
 
 </Project>
