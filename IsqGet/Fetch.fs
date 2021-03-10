@@ -28,7 +28,7 @@ let querySelectorAll<'T when 'T :> IElement> (selector: string) (elem: IElement)
 
 let termsFromIsqDocument (doc: IDocument): Result<List<Term>, string> =
     let termSelectorOption =
-        doc.QuerySelector "body"
+        doc.DocumentElement
         |> querySelector "select[id='TERM_ID']"
 
     Functional.result {
@@ -39,6 +39,7 @@ let termsFromIsqDocument (doc: IDocument): Result<List<Term>, string> =
         let! options =
             termSelector
             |> querySelectorAll<IHtmlOptionElement> ("option")
+            |> Option.map List.tail // skip the first 'None Selected' option
             |> Functional.optionToResult
                 "Not all 'option' children of select[id='TERM_ID'] were IHtmlOptionElement. This should never happen."
 
@@ -54,12 +55,12 @@ let termsFromIsqDocument (doc: IDocument): Result<List<Term>, string> =
 let private postBody (term: Term) =
     "pv_sub=Submit&pv_term=" + term.id + "&pv_dept="
 
-let getIsqHtmlWithTerm (post: Http.BodyFunction, term: Term) =
-    post "https://bannerssb.unf.edu/nfpo-ssb/wkshisq.p_isq_dept_pub" (postBody term) "text/html;charset=UTF-8"
+let getIsqHtmlWithTerm (post: Http.BodyFunction) (term: Term) =
+    post "https://bannerssb.unf.edu/nfpo-ssb/wkshisq.p_isq_dept_pub" (postBody term) "application/x-www-form-urlencoded"
 
 let departmentsFromIsqTermDocument (doc: IDocument): Result<List<Department>, string> =
     let deptSelectorOption =
-        doc.QuerySelector "body"
+        doc.DocumentElement
         |> querySelector "select[id='DEPT_ID']"
 
     Functional.result {
@@ -70,12 +71,15 @@ let departmentsFromIsqTermDocument (doc: IDocument): Result<List<Department>, st
         let! options =
             deptSelector
             |> querySelectorAll<IHtmlOptionElement> ("option")
+            |> Option.map List.tail // skip first 'All Departments' option
             |> Functional.optionToResult
                 "Not all 'option' children of select[id='DEPT_ID'] were IHtmlOptionElement. This should never happen."
 
         return
             options
-            |> List.map (fun option -> {id = option.Value; name = option.Text})
+            |> List.map (fun option ->
+                { id = option.Value
+                  name = option.Text })
     }
 
 let private isqUrl (term: Term) (dept: Department) =
@@ -83,7 +87,15 @@ let private isqUrl (term: Term) (dept: Department) =
     + term.id
     + "&pv_dept="
     + dept.id
-    + "6202&pv_pidm="
+    + "&pv_pidm="
 
 let getIsqCsv (get: Http.GetFunction) (term: Term) (department: Department) =
-    get (isqUrl term department)
+    async {
+        let! result = get (isqUrl term department)
+
+        return
+            match result with
+            | Ok "" -> Error(sprintf "Invalid term/dept combo %s/%s" term.id department.id)
+            | Ok v -> Ok v
+            | Error e -> Error e
+    }

@@ -2,7 +2,6 @@ module IsqGet.Functional
 
 open System
 open System.Text.RegularExpressions
-open System.Threading.Tasks
 
 let rec private collectResultWhileRec (transform: 'a -> Result<'b, 'c>) (sequence: seq<'a>) (accumulator: List<'b>) =
     if Seq.isEmpty sequence then
@@ -60,7 +59,7 @@ let regexNthCapture (pattern: string) (number: int) (input: string): string opti
         (Regex.Match(input, pattern)).Groups.Values
         |> Seq.toArray
 
-    if matches.Length >= number then None else Some matches.[number].Value
+    if number >= matches.Length then None else Some matches.[number].Value
 
 let regexCapture (pattern: string) (input: string): string option = regexNthCapture pattern 1 input
 
@@ -75,16 +74,43 @@ type OptionBuilder() =
 let option = OptionBuilder()
 
 type ResultBuilder() =
-    member _.Bind(option: Result<'a, 'b>, transform: 'a -> Result<'c, 'b>): Result<'c, 'b> =
-        match option with
+    member _.Bind(result: Result<'a, 'b>, transform: 'a -> Result<'c, 'b>): Result<'c, 'b> =
+        match result with
         | Ok a -> transform a
         | Error e -> Error e
 
     member _.Return(value: 'a): Result<'a, 'b> = Ok value
+    
+    member _.ReturnFrom(value: Result<'a, 'b>): Result<'a, 'b> = value
 
 let result = ResultBuilder()
 
 let asAsync (value: 'T): Async<'T> = async { return value }
+
+let asResult (value: 'a): Result<'a, 'b> = Ok value
+
+let asyncMap (transform: 'a -> 'b) (value: Async<'a>): Async<'b> =
+    async {
+        let! v = value
+        return transform v
+    }
+
+type AsyncResultBuilder() =
+    member _.Bind(resultAsync: Async<Result<'a, 'b>>, transform: 'a -> Async<Result<'c, 'b>>): Async<Result<'c, 'b>> =
+        async {
+            let! result = resultAsync
+
+            return!
+                match result with
+                | Ok a -> transform a
+                | Error e -> Error e |> asAsync
+        }
+
+    member _.Return(value: 'a): Async<Result<'a, 'b>> = Ok value |> asAsync
+    
+    member _.ReturnFrom(value: Async<Result<'a, 'b>>): Async<Result<'a, 'b>> = value
+
+let asyncResult = AsyncResultBuilder()
 
 let rec retryWithDelayAsync (fn: unit -> Async<Result<'a, 'b>>)
                             (retryDelayMs: int)
