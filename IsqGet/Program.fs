@@ -45,7 +45,7 @@ let getDepartmentsFromTerm (term: Term) =
 let getEntriesFromTermAndDepartment (term: Term) (department: Department) =
     Functional.asyncResult {
         let! csv = Fetch.getIsqCsv get term department
-        let! entries = Csv.parseCsv csv |> Functional.asAsync
+        let! entries = Csv.parseCsv term department csv |> Functional.asAsync
         return entries
     }
 

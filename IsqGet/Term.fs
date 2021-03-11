@@ -1,15 +1,18 @@
 namespace IsqGet
 
 type Season =
-    | Spring = 0
-    | Summer = 1
-    | Fall = 2
+    | Spring
+    | Summer
+    | Fall
 
 type Term(id: string, year: int, season: Season) =
     member this.id = id
     member this.year = year
     member this.season = season
     
+    override this.ToString() =
+        sprintf "%A %d" season year
+          
     static member parseSeason(str: string): Season option =
         match str.ToLower() with
         | "spring" -> Some Season.Spring

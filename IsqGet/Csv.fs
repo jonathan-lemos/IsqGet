@@ -6,7 +6,9 @@ open System.Linq
 open CsvHelper
 
 type Entry =
-    { courseCode: string
+    { term: Term
+      department: Department
+      courseCode: string
       courseName: string
       professorName: string
       gpa: double
@@ -14,16 +16,16 @@ type Entry =
       responseRate: double
       rating: double }
 
-let rec private readerSequence (reader: CsvReader) =
+let rec private readerSequence (reader: CsvReader): seq<CsvReader> =
     if reader.Read() then
         seq {
             yield reader
-            yield! readerSequence reader
+            yield! (readerSequence reader)
         }
     else
         Seq.empty
 
-let parseCsv (csv: string): Result<List<Entry>, string> =
+let parseCsv (term: Term) (department: Department) (csv: string): Result<List<Entry>, string> =
     use textReader = new StringReader(csv)
 
     use reader =
@@ -64,7 +66,9 @@ let parseCsv (csv: string): Result<List<Entry>, string> =
                     let! rating = fields.[19] |> Functional.stringToDoubleResult
 
                     return
-                        { courseCode = courseCode
+                        { term = term
+                          department = department
+                          courseCode = courseCode
                           courseName = courseName
                           professorName = professorName
                           gpa = gpa

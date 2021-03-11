@@ -11,7 +11,7 @@ let rec toMultilineJson (entries: seq<Csv.Entry>): seq<string> =
         Seq.empty
     else
         seq {
-            yield (Seq.head |> JsonConvert.SerializeObject) + "\n"
+            yield (Seq.head entries |> JsonConvert.SerializeObject) + "\n"
             yield! Seq.tail entries |> toMultilineJson
         }
 

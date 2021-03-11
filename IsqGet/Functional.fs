@@ -3,13 +3,18 @@ module IsqGet.Functional
 open System
 open System.Text.RegularExpressions
 
+let private seqTryHeadSafe (sequence: seq<'a>): 'a option =
+    try
+        Seq.tryHead sequence
+    with :? ArgumentException -> None
+
 let rec private collectResultWhileRec (transform: 'a -> Result<'b, 'c>) (sequence: seq<'a>) (accumulator: List<'b>) =
-    if Seq.isEmpty sequence then
-        Ok(accumulator |> List.rev)
-    else
-        match transform (Seq.head sequence) with
+    match seqTryHeadSafe sequence with
+    | Some head ->
+        match transform head with
         | Ok v -> collectResultWhileRec transform (Seq.tail sequence) (v :: accumulator)
         | Error e -> Error e
+    | None -> Ok(accumulator |> List.rev)
 
 let collectResultWhile (transform: 'a -> Result<'b, 'c>) (sequence: seq<'a>): Result<List<'b>, 'c> =
     collectResultWhileRec transform sequence List.empty
@@ -80,7 +85,7 @@ type ResultBuilder() =
         | Error e -> Error e
 
     member _.Return(value: 'a): Result<'a, 'b> = Ok value
-    
+
     member _.ReturnFrom(value: Result<'a, 'b>): Result<'a, 'b> = value
 
 let result = ResultBuilder()
@@ -107,7 +112,7 @@ type AsyncResultBuilder() =
         }
 
     member _.Return(value: 'a): Async<Result<'a, 'b>> = Ok value |> asAsync
-    
+
     member _.ReturnFrom(value: Async<Result<'a, 'b>>): Async<Result<'a, 'b>> = value
 
 let asyncResult = AsyncResultBuilder()
