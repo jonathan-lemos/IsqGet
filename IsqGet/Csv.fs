@@ -11,7 +11,7 @@ type Entry =
       courseCode: string
       courseName: string
       professorName: string
-      gpa: double
+      gpa: double Option 
       enrolled: int
       responseRate: double
       rating: double }
@@ -49,7 +49,7 @@ let parseCsv (term: Term) (department: Department) (csv: string): Result<List<En
                     let courseName = fields.[1]
                     let professorName = fields.[3]
 
-                    let! gpa = fields.[16] |> Functional.stringToDoubleResult
+                    let gpa = fields.[16] |> Functional.stringToDouble 
 
                     let! enrolled = fields.[17] |> Functional.stringToIntResult
 

@@ -1,35 +1,44 @@
 module IsqGet.Functional
 
 open System
+open System.Collections.Generic
 open System.Text.RegularExpressions
 
-let private seqTryHeadSafe (sequence: seq<'a>): 'a option =
-    try
-        Seq.tryHead sequence
-    with :? ArgumentException -> None
+let enumeratorToSeq (enumerator: IEnumerator<'T>): seq<'T> =
+    seq {
+        while enumerator.MoveNext() do
+            yield enumerator.Current
+    }
 
-let rec private collectResultWhileRec (transform: 'a -> Result<'b, 'c>) (sequence: seq<'a>) (accumulator: List<'b>) =
-    match seqTryHeadSafe sequence with
-    | Some head ->
+let enumeratorDeconstruct (enumerator: IEnumerator<'T>): ('T * IEnumerator<'T>) option =
+    if enumerator.MoveNext() then Some(enumerator.Current, enumerator) else None
+
+let rec private collectResultWhileRec (transform: 'a -> Result<'b, 'c>)
+                                      (enumerator: IEnumerator<'a>)
+                                      (accumulator: 'b list)
+                                      =
+    match enumeratorDeconstruct enumerator with
+    | Some (head, tail) ->
         match transform head with
-        | Ok v -> collectResultWhileRec transform (Seq.tail sequence) (v :: accumulator)
+        | Ok v ->
+            let newList = v :: accumulator
+            collectResultWhileRec transform tail (v :: accumulator)
         | Error e -> Error e
     | None -> Ok(accumulator |> List.rev)
 
-let collectResultWhile (transform: 'a -> Result<'b, 'c>) (sequence: seq<'a>): Result<List<'b>, 'c> =
-    collectResultWhileRec transform sequence List.empty
+let collectResultWhile (transform: 'a -> Result<'b, 'c>) (sequence: seq<'a>): Result<'b list, 'c> =
+    collectResultWhileRec transform (sequence.GetEnumerator()) List.empty
 
-let rec private collectWhileRec (transform: 'a -> Option<'b>) (sequence: seq<'a>) (accumulator: List<'b>) =
-    if Seq.isEmpty sequence then
-        Some(accumulator |> List.rev)
-    else
-        match transform (Seq.head sequence) with
-        | Some v -> collectWhileRec transform (Seq.tail sequence) (v :: accumulator)
+let rec private collectWhileRec (transform: 'a -> Option<'b>) (enumerator: IEnumerator<'a>) (accumulator: 'b list) =
+    match enumeratorDeconstruct enumerator with
+    | Some (head, tail) ->
+        match transform head with
+        | Some v -> collectWhileRec transform tail (v :: accumulator)
         | None -> None
+    | None -> Some(accumulator |> List.rev)
 
-let collectWhile (transform: 'a -> Option<'b>) (sequence: seq<'a>): List<'b> option =
-    collectWhileRec transform sequence List.empty
-
+let collectWhile (transform: 'a -> Option<'b>) (sequence: seq<'a>): 'b list option =
+    collectWhileRec transform (sequence.GetEnumerator()) List.empty
 
 let resultToOption (result: Result<'a, 'b>): 'a option =
     match result with
@@ -130,5 +139,3 @@ let rec retryWithDelayAsync (fn: unit -> Async<Result<'a, 'b>>)
             | (_count, Ok value) -> Ok value |> asAsync
             | (_count, Error _) -> retryWithDelayAsync fn retryDelayMs (retryCount - 1)
     }
-
-let seqDeconstruct (sequence: seq<'T>): 'T * seq<'T> = (Seq.head sequence, Seq.tail sequence)

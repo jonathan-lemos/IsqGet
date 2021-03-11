@@ -19,6 +19,12 @@ type Term(id: string, year: int, season: Season) =
         | "summer" -> Some Season.Summer
         | "fall" -> Some Season.Fall
         | _ -> None
+        
+    static member seasonToString (season: Season): string =
+        match season with
+        | Season.Spring -> "Spring"
+        | Season.Summer -> "Summer"
+        | Season.Fall -> "Fall"
 
     static member fromIdAndString (id: string) (str: string): Term option =
         match str.Split(" ") with

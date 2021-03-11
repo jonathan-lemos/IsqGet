@@ -1,52 +1,89 @@
 module IsqGet.Serialize
 
+open System.Collections.Generic
+open System.IO
+open System.Text
 open Newtonsoft.Json
 
-type Serializer =
-    | Streaming of (seq<Csv.Entry> -> seq<string>)
-    | Greedy of (seq<Csv.Entry> -> string)
+type Serializer = seq<Csv.Entry> -> seq<string>
 
-let rec toMultilineJson (entries: seq<Csv.Entry>): seq<string> =
-    if Seq.isEmpty entries then
-        Seq.empty
-    else
-        seq {
-            yield (Seq.head entries |> JsonConvert.SerializeObject) + "\n"
-            yield! Seq.tail entries |> toMultilineJson
-        }
+let serializeEntry (entry: Csv.Entry) =
+    let sb = StringBuilder()
+    use sw = new StringWriter(sb)
+    use writer = new JsonTextWriter(sw)
+    
+    writer.WriteStartObject()
+    
+    writer.WritePropertyName "courseCode"
+    writer.WriteValue entry.courseCode
+    
+    writer.WritePropertyName "courseName"
+    writer.WriteValue entry.courseName
+    
+    writer.WritePropertyName "department"
+    writer.WriteStartObject()
+    
+    writer.WritePropertyName "id"
+    writer.WriteValue entry.department.id
+    
+    writer.WritePropertyName "name"
+    writer.WriteValue entry.department.name
+    
+    writer.WriteEndObject()
+    
+    writer.WritePropertyName "enrolled"
+    writer.WriteValue entry.enrolled
+    
+    writer.WritePropertyName "gpa"
+    match entry.gpa with
+    | Some value -> writer.WriteValue value
+    | None -> writer.WriteNull()
+    
+    writer.WritePropertyName "professorName"
+    writer.WriteValue entry.professorName
+    
+    writer.WritePropertyName "rating"
+    writer.WriteValue entry.rating
+    
+    writer.WritePropertyName "responseRate"
+    writer.WriteValue entry.responseRate
+    
+    writer.WritePropertyName "term"
+    writer.WriteStartObject()
+    
+    writer.WritePropertyName "id"
+    writer.WriteValue entry.term.id
+    
+    writer.WritePropertyName "season"
+    writer.WriteValue (Term.seasonToString entry.term.season)
 
-let toJson (entries: seq<Csv.Entry>): string =
-    entries
-    |> Seq.toArray
-    |> JsonConvert.SerializeObject
+    writer.WritePropertyName "year"
+    writer.WriteValue entry.term.year
+    
+    writer.WriteEndObject()
+    
+    writer.WriteEndObject()
+    
+    sb.ToString()
 
-let toSqliteCommands (entries: seq<Csv.Entry>): seq<string> =
+let rec private loopAndYieldJson (enumerator: IEnumerator<Csv.Entry>) (leadingComma: bool) =
     seq {
-        yield
-            "
-        CREATE TABLE Entries(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            courseCode INTEGER NOT NULL,
-            courseName TEXT NOT NULL,
-            professorName TEXT NOT NULL,
-            gpa REAL NOT NULL,
-            enrolled INTEGER NOT NULL,
-            responseRate REAL NOT NULL,
-            rating REAL NOT NULL
-        );
-        "
-                .Trim()
+        if leadingComma then
+            yield ","
 
         yield!
-            entries
-            |> Seq.map (fun entry ->
-                sprintf
-                    "INSERT INTO Entries VALUES ('%s', '%s', '%s', %f, %d, %f, %f);"
-                    entry.courseCode
-                    entry.courseName
-                    entry.professorName
-                    entry.gpa
-                    entry.enrolled
-                    entry.responseRate
-                    entry.rating)
+            match Functional.enumeratorDeconstruct enumerator with
+            | Some (head, tail) ->
+                seq {
+                    yield serializeEntry head
+                    yield! loopAndYieldJson tail true
+                }
+            | None -> Seq.empty
+    }
+
+let toJson (entries: seq<Csv.Entry>): seq<string> =
+    seq {
+        yield "["
+        yield! loopAndYieldJson (entries.GetEnumerator()) false
+        yield "]"
     }

@@ -45,7 +45,11 @@ let getDepartmentsFromTerm (term: Term) =
 let getEntriesFromTermAndDepartment (term: Term) (department: Department) =
     Functional.asyncResult {
         let! csv = Fetch.getIsqCsv get term department
-        let! entries = Csv.parseCsv term department csv |> Functional.asAsync
+
+        let! entries =
+            Csv.parseCsv term department csv
+            |> Functional.asAsync
+
         return entries
     }
 
@@ -92,11 +96,7 @@ let getEntrySequence () =
 let getOutputSequence (args: Args) =
     Functional.asyncResult {
         let! result = getEntrySequence ()
-
-        return
-            match args.serialize result with
-            | Choice1Of2 sequence -> sequence
-            | Choice2Of2 string -> [ string ] |> List.toSeq
+        return args.serialize result
     }
 
 let withArgs (args: Args) =
@@ -106,12 +106,13 @@ let withArgs (args: Args) =
     }
 
 [<EntryPoint>]
-let main argv =  
-    let result = Functional.result {
-        let! args = Args.parse argv
-        return! withArgs args |> Async.RunSynchronously
-    }
-    
+let main argv =
+    let result =
+        Functional.result {
+            let! args = Args.parse argv
+            return! withArgs args |> Async.RunSynchronously
+        }
+
     match result with
     | Ok () -> 0
     | Error e ->
