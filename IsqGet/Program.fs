@@ -71,31 +71,35 @@ let processTerms (terms: seq<Term>) =
             | Error e -> yield Error e
     }
 
-let processEntrySequence (outputError: string -> unit) (sequence: seq<Result<List<Csv.Entry>, string>>) =
+let processEntrySequence (args: Args) (outputError: string -> unit) (sequence: seq<Result<List<Csv.Entry>, string>>) =
     seq {
-        for entry in sequence do
-            match entry with
-            | Ok entries -> yield! entries
+        for result in sequence do
+            match result with
+            | Ok entries ->
+                yield!
+                    (entries
+                     |> Seq.filter (fun entry -> args.matchesProfessor entry.professorName))
             | Error e -> outputError e
     }
 
 
 let printError (s: string) = eprintfn "\027[31;1m[ERROR] %s\027[m" s
 
-let getEntrySequence () =
+let getEntrySequence (args: Args) =
     Functional.asyncResult {
         let! terms = getTerms ()
+        let terms = terms |> Seq.filter args.matchesTerm
         let resultSequence = processTerms terms
 
         let entrySequence =
-            processEntrySequence printError resultSequence
+            processEntrySequence args printError resultSequence
 
         return entrySequence
     }
 
 let getOutputSequence (args: Args) =
     Functional.asyncResult {
-        let! result = getEntrySequence ()
+        let! result = getEntrySequence args
         return args.serialize result
     }
 

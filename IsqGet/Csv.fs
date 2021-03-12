@@ -11,10 +11,10 @@ type Entry =
       courseCode: string
       courseName: string
       professorName: string
-      gpa: double Option 
+      gpa: double Option
       enrolled: int
-      responseRate: double
-      rating: double }
+      responseRate: double Option
+      rating: double Option }
 
 let rec private readerSequence (reader: CsvReader): seq<CsvReader> =
     if reader.Read() then
@@ -41,29 +41,31 @@ let parseCsv (term: Term) (department: Department) (csv: string): Result<List<En
                 |> Seq.map currentReader.GetField
                 |> Seq.toArray
 
-            if fields.Length <> 20 then
-                Error(sprintf "Line '%s' is invalid: expected 20 fields." (fields |> String.concat ","))
+            if fields.Length < 20 then
+                Error(sprintf "Line '%s' is invalid: expected at least 20 fields, got %d." (fields |> String.concat ",") fields.Length)
             else
                 Functional.result {
                     let courseCode = fields.[0]
                     let courseName = fields.[1]
                     let professorName = fields.[3]
 
-                    let gpa = fields.[16] |> Functional.stringToDouble 
+                    let gpa = fields.[16] |> Functional.stringToDouble
 
                     let! enrolled = fields.[17] |> Functional.stringToIntResult
 
-                    let! responseRateField =
+                    let responseRateField =
                         fields.[18].Trim()
                         |> Functional.regexCapture "^(.*)%$"
-                        |> Functional.optionToResult ("'" + fields.[18] + "' is malformed.")
 
-                    let! responseRate =
-                        responseRateField
-                        |> Functional.stringToDoubleResult
-                        |> Result.map (fun number -> number * 0.01)
+                    let responseRate =
+                        match responseRateField with
+                        | Some value ->
+                            value
+                            |> Functional.stringToDouble
+                            |> Option.map (fun number -> number * 0.01)
+                        | None -> None
 
-                    let! rating = fields.[19] |> Functional.stringToDoubleResult
+                    let rating = fields.Last() |> Functional.stringToDouble
 
                     return
                         { term = term

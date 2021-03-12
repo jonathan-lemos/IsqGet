@@ -5,13 +5,65 @@ open IsqGet
 
 type Outputter = seq<string> -> Result<unit, string>
 
-type Range(lower: int, upper: int) =
-    member this.includes(year: int): bool = lower <= year && year <= upper
+type private TermSegmentParseResult =
+    | Year of int
+    | TermValue of Term
+    | Invalid
+
+type Range(lower: Term, upper: Term) =
+    let (lower, upper) = if lower > upper then (upper, lower) else (lower, upper)
+    member this.includes(term: Term): bool = lower <= term && term <= upper
+    
+    static member private parseSegment (segment: string): TermSegmentParseResult =
+        match segment.ToLower() with
+        | Str.ParseRegex "^\\d+$" _matches -> Year (int segment)
+        | Str.ParseRegex "^([a-z]+)(\\d+)$" [ season; year ] ->
+            let seasonValue =
+                match season with
+                | "spring" -> Some Spring
+                | "summer" -> Some Summer
+                | "fall" -> Some Fall
+                | "s" -> Some Spring
+                | "su" -> Some Summer
+                | "f" -> Some Fall
+                | _ -> None
+
+            match seasonValue with
+            | Some season -> TermValue (Term(season, int year))
+            | None -> Invalid
+        | _ -> Invalid
+               
+    static member private parseRange (segmentBegin: string) (segmentEnd: string): Range option =
+        let tuple =
+            match (Range.parseSegment segmentBegin, Range.parseSegment segmentEnd) with
+            | (Year first, Year last) ->
+                let (first, last) = if first > last then (last, first) else (first, last)
+                Some (Term(Spring, first), Term(Fall, last))
+            | (TermValue first, TermValue last) ->
+                Some (if first > last then (last, first) else (first, last))
+            | _ -> None
+        
+        tuple |> Option.map Range
+        
+    static member private parseSingle (segment: string): Range option =
+        let tuple =
+            match Range.parseSegment segment with
+            | Year year -> Some (Term(Spring, year), Term(Fall, year))
+            | TermValue term -> Some (term, term)
+            | Invalid -> None
+        
+        tuple |> Option.map Range
+    
+    static member fromString (string: string): Range option =
+        match string with
+        | Str.ParseRegex "^(.+)-(.+)$" [first; second] -> Range.parseRange first second
+        | _ -> Range.parseSingle string
+    
 
 type Args(serializer: Serialize.Serializer,
           professors: string list,
           courses: string list,
-          years: Range list,
+          termRanges: Range list,
           outputter: Outputter) =
     static member private outputToStdout(s: seq<string>) =
         for string in s do
@@ -41,28 +93,28 @@ type Args(serializer: Serialize.Serializer,
                 Str.shouldMatch courseCode entry
                 || Str.shouldMatch courseName entry)
 
-    member this.matchesYear(year: int) =
-        if years.IsEmpty then
+    member this.matchesTerm(term: Term) =
+        if termRanges.IsEmpty then
             true
         else
-            years
-            |> Seq.exists (fun range -> range.includes year)
+            termRanges
+            |> Seq.exists (fun range -> range.includes term)
 
     member this.withSerializer(newSerializer: Serialize.Serializer): Args =
-        Args(newSerializer, professors, courses, years, outputter)
+        Args(newSerializer, professors, courses, termRanges, outputter)
 
     member this.withProfessor(professor: string): Args =
-        Args(serializer, professor :: professors, courses, years, outputter)
+        Args(serializer, professor :: professors, courses, termRanges, outputter)
 
     member this.withCourse(course: string): Args =
-        Args(serializer, professors, course :: courses, years, outputter)
+        Args(serializer, professors, course :: courses, termRanges, outputter)
 
-    member this.withYears(range: Range): Args =
-        Args(serializer, professors, courses, range :: years, outputter)
+    member this.withTermRange(range: Range): Args =
+        Args(serializer, professors, courses, range :: termRanges, outputter)
 
     member this.withOutputter(newOutputter: Outputter): Args =
-        Args(serializer, professors, courses, years, newOutputter)
-
+        Args(serializer, professors, courses, termRanges, newOutputter)
+           
     static member printHelp(progName: string) =
         printfn "Usage: %s [...Args?]" progName
         printfn "Args:"
@@ -73,8 +125,8 @@ type Args(serializer: Serialize.Serializer,
         printfn
             "\t\tInclude only the given course name/course code. Can be given more than once to return multiple courses."
 
-        printfn "\t--year [1234 or 1234-1236]"
-        printfn "\t\tInclude only the given year(s). Can be given more than once to return multiple years."
+        printfn "\t--term [2012 or Spring2012 or 2012-2015 or Spring2012-Fall2015]"
+        printfn "\t\tInclude only the given term(s). Can be given more than once to return multiple terms."
 
     static member private parseOptionWithArgument (cmdline: IEnumerator<string>)
                                                   (args: Args)
@@ -93,13 +145,12 @@ type Args(serializer: Serialize.Serializer,
         Args.parseOptionWithArgument cmdline args (fun args head tail -> Ok(tail, args.withCourse head))
             "--course requires a course's name as an argument"
 
-    static member private parseYear (cmdline: IEnumerator<string>) (args: Args) =
+    static member private parseTermRange (cmdline: IEnumerator<string>) (args: Args) =
         Args.parseOptionWithArgument cmdline args (fun args head tail ->
-            match head with
-            | Str.ParseRegex "^(\d+)-(\d+)$" [ n1; n2 ] -> Ok(tail, args.withYears (Range(int n1, int n2)))
-            | Str.ParseRegex "^(\d+)$" [ n ] -> Ok(tail, args.withYears (Range(int n, int n)))
-            | _ -> Error(sprintf "--year argument '%s' is malformed. Must be of the format '1234' or '2010-2015'" head))
-            "--year requires a year (1234) or years (2010-2015) as an argument."
+            match Range.fromString head with
+            | Some range -> Ok(tail, args.withTermRange range)
+            | None -> Error(sprintf "--term argument '%s' is malformed. Must be of the format '2015-2020' or '2015' or 'Summer2014-Fall2018'" head))
+            "--term requires a year (1234) or years (2010-2015) as an argument."
 
     static member private parseRec (cmdline: IEnumerator<string>) (args: Args): Result<Args, string> =
         match Functional.enumeratorDeconstruct cmdline with
@@ -110,7 +161,7 @@ type Args(serializer: Serialize.Serializer,
                         match head with
                         | "--professor" -> Ok Args.parseProfessor
                         | "--course" -> Ok Args.parseCourse
-                        | "--year" -> Ok Args.parseYear
+                        | "--term" -> Ok Args.parseTermRange
                         | _ -> Error(sprintf "Unrecognized option '%s'" head)
 
                     return! parser tail args
@@ -122,4 +173,5 @@ type Args(serializer: Serialize.Serializer,
         | None -> Ok args
 
 
-    static member parse(cmdline: seq<string>): Result<Args, string> = Args.parseRec (cmdline.GetEnumerator()) (Args())
+    static member parse(cmdline: seq<string>): Result<Args, string> =
+        Args.parseRec (cmdline.GetEnumerator()) (Args())
