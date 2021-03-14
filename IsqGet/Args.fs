@@ -2,6 +2,7 @@ namespace IsqGet
 
 open System.Collections.Generic
 open IsqGet
+open IsqGet.Iterator
 
 type Outputter = seq<string> -> Result<unit, string>
 
@@ -128,33 +129,33 @@ type Args(serializer: Serialize.Serializer,
         printfn "\t--term [2012 or Spring2012 or 2012-2015 or Spring2012-Fall2015]"
         printfn "\t\tInclude only the given term(s). Can be given more than once to return multiple terms."
 
-    static member private parseOptionWithArgument (cmdline: IEnumerator<string>)
+    static member private parseOptionWithArgument (cmdline: Iterator<string>)
                                                   (args: Args)
-                                                  (ifNotEmpty: Args -> string -> IEnumerator<string> -> Result<IEnumerator<string> * Args, string>)
+                                                  (ifNotEmpty: Args -> string -> Iterator<string> -> Result<Iterator<string> * Args, string>)
                                                   (emptyErrorMsg: string)
                                                   =
-        match Functional.enumeratorDeconstruct cmdline with
-        | Some (head, tail) -> ifNotEmpty args head tail
-        | None -> Error emptyErrorMsg
+        match cmdline with
+        | Deconstruct (head, tail) -> ifNotEmpty args head tail
+        | Empty -> Error emptyErrorMsg
 
-    static member private parseProfessor (cmdline: IEnumerator<string>) (args: Args) =
+    static member private parseProfessor (cmdline: Iterator<string>) (args: Args) =
         Args.parseOptionWithArgument cmdline args (fun args head tail -> Ok(tail, args.withProfessor head))
             "--professor requires a professor's name as an argument"
 
-    static member private parseCourse (cmdline: IEnumerator<string>) (args: Args) =
+    static member private parseCourse (cmdline: Iterator<string>) (args: Args) =
         Args.parseOptionWithArgument cmdline args (fun args head tail -> Ok(tail, args.withCourse head))
             "--course requires a course's name as an argument"
 
-    static member private parseTermRange (cmdline: IEnumerator<string>) (args: Args) =
+    static member private parseTermRange (cmdline: Iterator<string>) (args: Args) =
         Args.parseOptionWithArgument cmdline args (fun args head tail ->
             match Range.fromString head with
             | Some range -> Ok(tail, args.withTermRange range)
             | None -> Error(sprintf "--term argument '%s' is malformed. Must be of the format '2015-2020' or '2015' or 'Summer2014-Fall2018'" head))
             "--term requires a year (1234) or years (2010-2015) as an argument."
 
-    static member private parseRec (cmdline: IEnumerator<string>) (args: Args): Result<Args, string> =
-        match Functional.enumeratorDeconstruct cmdline with
-        | Some (head, tail) ->
+    static member private parseRec (cmdline: Iterator<string>) (args: Args): Result<Args, string> =
+        match cmdline with
+        | Deconstruct (head, tail) ->
             let result =
                 Functional.result {
                     let! parser =
@@ -170,8 +171,8 @@ type Args(serializer: Serialize.Serializer,
             match result with
             | Ok (tail, args) -> Args.parseRec tail args
             | Error e -> Error e
-        | None -> Ok args
+        | Empty -> Ok args
 
 
     static member parse(cmdline: seq<string>): Result<Args, string> =
-        Args.parseRec (cmdline.GetEnumerator()) (Args())
+        Args.parseRec (cmdline |> Iterator) (Args())

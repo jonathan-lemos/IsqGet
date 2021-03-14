@@ -1,44 +1,30 @@
 module IsqGet.Functional
 
 open System
-open System.Collections.Generic
 open System.Text.RegularExpressions
+open Iterator
 
-let enumeratorToSeq (enumerator: IEnumerator<'T>): seq<'T> =
-    seq {
-        while enumerator.MoveNext() do
-            yield enumerator.Current
-    }
-
-let enumeratorDeconstruct (enumerator: IEnumerator<'T>): ('T * IEnumerator<'T>) option =
-    if enumerator.MoveNext() then Some(enumerator.Current, enumerator) else None
-
-let rec private collectResultWhileRec (transform: 'a -> Result<'b, 'c>)
-                                      (enumerator: IEnumerator<'a>)
-                                      (accumulator: 'b list)
-                                      =
-    match enumeratorDeconstruct enumerator with
-    | Some (head, tail) ->
+let rec private mapWhileRec (transform: 'a -> Result<'b, 'c>) (iterator: Iterator<'a>) (accumulator: 'b list) =
+    match iterator with
+    | Deconstruct (head, tail) ->
         match transform head with
-        | Ok v ->
-            let newList = v :: accumulator
-            collectResultWhileRec transform tail (v :: accumulator)
+        | Ok v -> mapWhileRec transform tail (v :: accumulator)
         | Error e -> Error e
-    | None -> Ok(accumulator |> List.rev)
+    | Empty -> Ok(accumulator |> List.rev)
 
-let collectResultWhile (transform: 'a -> Result<'b, 'c>) (sequence: seq<'a>): Result<'b list, 'c> =
-    collectResultWhileRec transform (sequence.GetEnumerator()) List.empty
+let mapWhile (transform: 'a -> Result<'b, 'c>) (sequence: seq<'a>): Result<'b list, 'c> =
+    mapWhileRec transform (sequence |> Iterator) List.empty
 
-let rec private collectWhileRec (transform: 'a -> Option<'b>) (enumerator: IEnumerator<'a>) (accumulator: 'b list) =
-    match enumeratorDeconstruct enumerator with
-    | Some (head, tail) ->
+let rec private mapWhileIntoOptionRec (transform: 'a -> Option<'b>) (iterator: Iterator<'a>) (accumulator: 'b list) =
+    match iterator with
+    | Deconstruct (head, tail) ->
         match transform head with
-        | Some v -> collectWhileRec transform tail (v :: accumulator)
+        | Some v -> mapWhileIntoOptionRec transform tail (v :: accumulator)
         | None -> None
-    | None -> Some(accumulator |> List.rev)
+    | Empty -> Some(accumulator |> List.rev)
 
-let collectWhile (transform: 'a -> Option<'b>) (sequence: seq<'a>): 'b list option =
-    collectWhileRec transform (sequence.GetEnumerator()) List.empty
+let mapWhileIntoOption (transform: 'a -> Option<'b>) (sequence: seq<'a>): 'b list option =
+    mapWhileIntoOptionRec transform (sequence |> Iterator) List.empty
 
 let resultToOption (result: Result<'a, 'b>): 'a option =
     match result with
@@ -84,6 +70,8 @@ type OptionBuilder() =
         | None -> None
 
     member _.Return(value: 'a): 'a option = Some value
+
+    member _.ReturnFrom(value: 'a option): 'a option = value
 
 let option = OptionBuilder()
 

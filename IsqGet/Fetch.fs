@@ -21,7 +21,7 @@ let querySelector<'T when 'T :> IElement> (selector: string) (elem: IElement): O
 
 let querySelectorAll<'T when 'T :> IElement> (selector: string) (elem: IElement): Option<List<'T>> =
     elem.QuerySelectorAll selector
-    |> Functional.collectWhile (fun elem ->
+    |> Functional.mapWhileIntoOption (fun elem ->
         match elem with
         | :? 'T as x -> Some x
         | _ -> None)
@@ -45,7 +45,7 @@ let termsFromIsqDocument (doc: IDocument): Result<List<Term>, string> =
 
         let! terms =
             options
-            |> Functional.collectResultWhile (fun option ->
+            |> Functional.mapWhile (fun option ->
                 (Term.fromIdAndString option.Value option.Text)
                 |> Functional.optionToResult ("Term '" + option.Text + "' is invalid."))
 

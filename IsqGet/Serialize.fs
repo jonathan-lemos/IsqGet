@@ -1,9 +1,9 @@
 module IsqGet.Serialize
 
-open System.Collections.Generic
 open System.IO
 open System.Text
 open Newtonsoft.Json
+open Iterator
 
 type Serializer = seq<Csv.Entry> -> seq<string>
 
@@ -69,28 +69,36 @@ let serializeEntry (entry: Csv.Entry) =
 
     sb.ToString()
 
-let rec private loopAndYieldJson (enumerator: IEnumerator<Csv.Entry>) =
-    seq {
-        yield!
-            match Functional.enumeratorDeconstruct enumerator with
-            | Some (head, tail) ->
-                seq {
-                    yield serializeEntry head
-                    yield! loopAndYieldJson tail
-                }
-            | None -> Seq.empty
-    }
+let rec private loopAndYieldJsonEntries (iterator: Iterator<Csv.Entry>) =
+    match iterator with
+    | Deconstruct (head, tail) ->
+        seq {
+            yield serializeEntry head
+            yield! loopAndYieldJsonEntries tail
+        }
+    | Empty -> Seq.empty
 
-let rec private loopAndYieldJsonWithComma (enumerator: IEnumerator<Csv.Entry>) =
-    seq {
-        for entry in loopAndYieldJson enumerator do
-            yield ","
-            yield entry
-    }
+let toJson (entries: Csv.Entry seq): string seq =
+    let entryIterator =
+        loopAndYieldJsonEntries (entries |> Iterator)
+        |> Iterator
 
-let toJson (entries: seq<Csv.Entry>): seq<string> =
-    seq {
-        yield "["
-        yield! loopAndYieldJson (entries.GetEnumerator())
-        yield "]"
-    }
+    let rec generateCommaSeparatedSequence (jsonStringIterator: Iterator<string>) =
+        match jsonStringIterator with
+        | Deconstruct (head, tail) ->
+            seq {
+                yield ","
+                yield head
+                yield! generateCommaSeparatedSequence tail
+            }
+        | Empty -> Seq.empty
+
+    match entryIterator with
+    | Empty -> [ "[]" ] |> List.toSeq
+    | Deconstruct (head, tail) ->
+        seq {
+            yield "["
+            yield head
+            yield! generateCommaSeparatedSequence tail
+            yield "]"
+        }

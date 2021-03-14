@@ -42,43 +42,46 @@ let getDepartmentsFromTerm (term: Term) =
         return depts
     }
 
-let getEntriesFromTermAndDepartment (term: Term) (department: Department) =
-    Functional.asyncResult {
-        let! csv = Fetch.getIsqCsv get term department
+let termAndDeptToEntrySequence (term: Term) (department: Department) =
+    let csvAsync =
+        Functional.asyncResult {
+            let! csv = Fetch.getIsqCsv get term department
 
-        let! entries =
-            Csv.parseCsv term department csv
-            |> Functional.asAsync
+            return Csv.parseCsv term department csv
+        }
 
-        return entries
+    async {
+        let! csvEntryResult = csvAsync
+
+        return
+            match csvEntryResult with
+            | Ok sequence -> sequence
+            | Error e -> [ Error e ] |> List.toSeq
     }
 
-let processTermDepts (term: Term) (departments: seq<Department>) =
+let termAndDeptSeqToEntrySequence (term: Term) (departments: seq<Department>) =
     seq {
         for department in departments do
-            yield
-                getEntriesFromTermAndDepartment term department
+            yield!
+                termAndDeptToEntrySequence term department
                 |> Async.RunSynchronously
     }
 
-let processTerms (terms: seq<Term>) =
+let termSeqToEntrySequence (terms: seq<Term>) =
     seq {
         for term in terms do
             match getDepartmentsFromTerm term
                   |> Async.RunSynchronously
-                  |> Result.map (processTermDepts term) with
+                  |> Result.map (termAndDeptSeqToEntrySequence term) with
             | Ok s -> yield! s
             | Error e -> yield Error e
     }
 
-let processEntrySequence (args: Args) (outputError: string -> unit) (sequence: seq<Result<List<Csv.Entry>, string>>) =
+let filterErrorsFromEntrySequence (args: Args) (outputError: string -> unit) (sequence: seq<Result<Csv.Entry, string>>) =
     seq {
         for result in sequence do
             match result with
-            | Ok entries ->
-                yield!
-                    (entries
-                     |> Seq.filter (fun entry -> args.matchesProfessor entry.professorName))
+            | Ok entry -> yield entry
             | Error e -> outputError e
     }
 
@@ -89,10 +92,10 @@ let getEntrySequence (args: Args) =
     Functional.asyncResult {
         let! terms = getTerms ()
         let terms = terms |> Seq.filter args.matchesTerm
-        let resultSequence = processTerms terms
+        let resultSequence = termSeqToEntrySequence terms
 
         let entrySequence =
-            processEntrySequence args printError resultSequence
+            filterErrorsFromEntrySequence args printError resultSequence
 
         return entrySequence
     }
