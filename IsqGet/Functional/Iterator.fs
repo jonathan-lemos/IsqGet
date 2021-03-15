@@ -1,4 +1,4 @@
-namespace IsqGet
+namespace IsqGet.Functional
 
 open System.Collections
 open System.Collections.Generic
@@ -28,8 +28,6 @@ type Iterator<'T>(seq: 'T seq) =
     interface IEnumerable<'T> with
         member this.GetEnumerator(): IEnumerator<'T> = this._enumerator
         member this.GetEnumerator(): IEnumerator = this._enumerator :> IEnumerator
-    
-
 
 module Iterator =
     let (|Deconstruct|Empty|) (iter: Iterator<'T>) =

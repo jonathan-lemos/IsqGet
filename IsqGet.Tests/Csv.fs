@@ -11,7 +11,7 @@ let ``Parses sample csv fields properly`` () =
     """
     let sample = sample.Trim()
     
-    let fields = csvToFields sample |> Seq.toList
+    let fields = sample.Split("\n") |> Array.toList |> csvToFields
     let expected: Result<string list, string> list = [
         Ok ["quoted"; "not quoted"; "embedded \"quote\""]
         Ok ["spaces at end  "; "\"full quote\""; "normal"]

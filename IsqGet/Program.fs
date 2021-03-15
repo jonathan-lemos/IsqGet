@@ -3,48 +3,46 @@
 open System
 open FSharp.Control
 open IsqGet
+open Functional.Transform
+open Functional.Builders
+open Functional.Convert
 
 let get url =
-    Functional.retryWithDelayAsync (fun () -> Http.get url) 2000 3
+    retryWithDelayAsync (fun () -> Http.get url) 2000 3
 
 let post url body contentType =
-    Functional.retryWithDelayAsync (fun () -> Http.post url body contentType) 2000 3
+    retryWithDelayAsync (fun () -> Http.post url body contentType) 2000 3
 
 let randInt (lower: int) (upper: int) = (Random()).Next(lower, upper)
 
 let getTerms () =
-    Functional.asyncResult {
+    asyncResult {
         let! isqHtml = Fetch.getIsqHtml get
 
-        let! isqDoc =
-            Fetch.htmlToDocument isqHtml
-            |> Functional.asyncMap Functional.asResult
+        let! isqDoc = Fetch.htmlToDocument isqHtml |> asyncMap asResult
 
-        let! terms =
-            Fetch.termsFromIsqDocument isqDoc
-            |> Functional.asAsync
+        let! terms = Fetch.termsFromIsqDocument isqDoc |> asAsync
 
         return terms
     }
 
-let getDepartmentsFromTerm (term: Term) =
-    Functional.asyncResult {
+let getDepartmentsFromTerm (filterDepts: Department -> bool) (term: Term) =
+    asyncResult {
         let! html = Fetch.getIsqHtmlWithTerm post term
 
-        let! doc =
-            Fetch.htmlToDocument html
-            |> Functional.asyncMap Functional.asResult
+        let! doc = Fetch.htmlToDocument html |> asyncMap asResult
 
         let! depts =
             Fetch.departmentsFromIsqTermDocument doc
-            |> Functional.asAsync
+            |> Result.map (Seq.filter filterDepts)
+            |> asAsync
 
         return depts
     }
 
 let termAndDeptToEntrySequence (term: Term) (department: Department) =
     let csvAsync =
-        Functional.asyncResult {
+        asyncResult {
             let! csv = Fetch.getIsqCsv get term department
 
             return Csv.parseCsv term department csv
@@ -67,21 +65,28 @@ let termAndDeptSeqToEntrySequence (term: Term) (departments: seq<Department>) =
                 |> Async.RunSynchronously
     }
 
-let termSeqToEntrySequence (terms: seq<Term>) =
+let termSeqToEntrySequence (filterDepts: Department -> bool) (terms: seq<Term>) =
     seq {
         for term in terms do
-            match getDepartmentsFromTerm term
+            match getDepartmentsFromTerm filterDepts term
                   |> Async.RunSynchronously
                   |> Result.map (termAndDeptSeqToEntrySequence term) with
             | Ok s -> yield! s
             | Error e -> yield Error e
     }
 
-let filterErrorsFromEntrySequence (args: Args) (outputError: string -> unit) (sequence: seq<Result<Csv.Entry, string>>) =
+let filterErrorsAndUndesiredResultsFromEntrySequence (args: Args)
+                                                     (outputError: string -> unit)
+                                                     (sequence: seq<Result<Csv.Entry, string>>)
+                                                     =
     seq {
         for result in sequence do
             match result with
-            | Ok entry -> yield entry
+            | Ok entry ->
+                if args.matchesCourse entry.courseCode entry.courseName
+                   && args.matchesDepartment entry.department
+                   && args.matchesProfessor entry.professorName then
+                    yield entry
             | Error e -> outputError e
     }
 
@@ -89,19 +94,21 @@ let filterErrorsFromEntrySequence (args: Args) (outputError: string -> unit) (se
 let printError (s: string) = eprintfn "\027[31;1m[ERROR] %s\027[m" s
 
 let getEntrySequence (args: Args) =
-    Functional.asyncResult {
+    asyncResult {
         let! terms = getTerms ()
         let terms = terms |> Seq.filter args.matchesTerm
-        let resultSequence = termSeqToEntrySequence terms
+
+        let resultSequence =
+            termSeqToEntrySequence args.matchesDepartment terms
 
         let entrySequence =
-            filterErrorsFromEntrySequence args printError resultSequence
+            filterErrorsAndUndesiredResultsFromEntrySequence args printError resultSequence
 
         return entrySequence
     }
 
 let getOutputSequence (args: Args) =
-    Functional.asyncResult {
+    asyncResult {
         let! result = getEntrySequence args
         return args.serialize result
     }
@@ -115,7 +122,7 @@ let withArgs (args: Args) =
 [<EntryPoint>]
 let main argv =
     let result =
-        Functional.result {
+        result {
             let! args = Args.parse argv
             return! withArgs args |> Async.RunSynchronously
         }

@@ -3,6 +3,9 @@ module IsqGet.Fetch
 open AngleSharp
 open AngleSharp.Dom
 open AngleSharp.Html.Dom
+open IsqGet.Functional.Builders
+open IsqGet.Functional.Convert
+open IsqGet.Functional.Transform
 
 let getIsqHtml (get: Http.GetFunction) =
     get "https://bannerssb.unf.edu/nfpo-ssb/wkshisq.p_isq_dept_pub"
@@ -21,7 +24,7 @@ let querySelector<'T when 'T :> IElement> (selector: string) (elem: IElement): O
 
 let querySelectorAll<'T when 'T :> IElement> (selector: string) (elem: IElement): Option<List<'T>> =
     elem.QuerySelectorAll selector
-    |> Functional.mapWhileIntoOption (fun elem ->
+    |> mapWhileIntoOption (fun elem ->
         match elem with
         | :? 'T as x -> Some x
         | _ -> None)
@@ -31,23 +34,23 @@ let termsFromIsqDocument (doc: IDocument): Result<List<Term>, string> =
         doc.DocumentElement
         |> querySelector "select[id='TERM_ID']"
 
-    Functional.result {
+    result {
         let! termSelector =
             termSelectorOption
-            |> Functional.optionToResult "No select[id='TERM_ID'] found in the <body>"
+            |> optionToResult "No select[id='TERM_ID'] found in the <body>"
 
         let! options =
             termSelector
             |> querySelectorAll<IHtmlOptionElement> ("option")
             |> Option.map List.tail // skip the first 'None Selected' option
-            |> Functional.optionToResult
+            |> optionToResult
                 "Not all 'option' children of select[id='TERM_ID'] were IHtmlOptionElement. This should never happen."
 
         let! terms =
             options
-            |> Functional.mapWhile (fun option ->
+            |> mapWhile (fun option ->
                 (Term.fromIdAndString option.Value option.Text)
-                |> Functional.optionToResult ("Term '" + option.Text + "' is invalid."))
+                |> optionToResult (sprintf "Term '%s' is invalid." option.Text))
 
         return terms
     }
@@ -63,16 +66,16 @@ let departmentsFromIsqTermDocument (doc: IDocument): Result<List<Department>, st
         doc.DocumentElement
         |> querySelector "select[id='DEPT_ID']"
 
-    Functional.result {
+    result {
         let! deptSelector =
             deptSelectorOption
-            |> Functional.optionToResult "No select[id='DEPT_ID'] found in the <body>"
+            |> optionToResult "No select[id='DEPT_ID'] found in the <body>"
 
         let! options =
             deptSelector
             |> querySelectorAll<IHtmlOptionElement> ("option")
             |> Option.map List.tail // skip first 'All Departments' option
-            |> Functional.optionToResult
+            |> optionToResult
                 "Not all 'option' children of select[id='DEPT_ID'] were IHtmlOptionElement. This should never happen."
 
         return

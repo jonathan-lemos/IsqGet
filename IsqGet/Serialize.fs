@@ -2,8 +2,10 @@ module IsqGet.Serialize
 
 open System.IO
 open System.Text
+open IsqGet.Functional
 open Newtonsoft.Json
-open Iterator
+open IsqGet.Functional.Iterator
+open IsqGet
 
 type Serializer = seq<Csv.Entry> -> seq<string>
 
@@ -12,60 +14,55 @@ let serializeEntry (entry: Csv.Entry) =
     use sw = new StringWriter(sb)
     use writer = new JsonTextWriter(sw)
 
-    let writeDoubleOption (value: double option) =
+    let rec writeKeyValue (key: string) (value: #obj) =
+        writer.WritePropertyName key
+        writeValue value
+
+    and writeValue (value: obj) =
         match value with
-        | Some v -> writer.WriteValue v
-        | None -> writer.WriteNull()
+        | :? string as s -> writer.WriteValue s
+        | :? int as i -> writer.WriteValue i
+        | :? double as d -> writer.WriteValue d
+        | :? Term as t -> writeTerm t
+        | :? Department as dept -> writeDepartment dept
+        | :? (Option<obj>) as o ->
+            match o with
+            | Some s -> writeValue s
+            | None -> writer.WriteNull()
+        | otherwise -> writeValue (sprintf "%A" otherwise)
 
-    writer.WriteStartObject()
+    and writeTerm (term: Term) =
+        writeObject([
+            ("id", term.id :> obj)
+            ("season", term.season :> obj)
+            ("year", term.year :> obj)
+        ])
 
-    writer.WritePropertyName "courseCode"
-    writer.WriteValue entry.courseCode
+    and writeDepartment (dept: Department) =
+        writeObject([
+            ("id", dept.id :> obj)
+            ("name", dept.name :> obj)
+        ])
 
-    writer.WritePropertyName "courseName"
-    writer.WriteValue entry.courseName
+    and writeObject (pairs: (string * obj) seq) =
+        writer.WriteStartObject()
 
-    writer.WritePropertyName "department"
-    writer.WriteStartObject()
+        pairs
+        |> Seq.iter (fun (key, value) -> writeKeyValue key value)
 
-    writer.WritePropertyName "id"
-    writer.WriteValue entry.department.id
+        writer.WriteEndObject()
 
-    writer.WritePropertyName "name"
-    writer.WriteValue entry.department.name
-
-    writer.WriteEndObject()
-
-    writer.WritePropertyName "enrolled"
-    writer.WriteValue entry.enrolled
-
-    writer.WritePropertyName "gpa"
-    writeDoubleOption entry.gpa
-
-    writer.WritePropertyName "professorName"
-    writer.WriteValue entry.professorName
-
-    writer.WritePropertyName "rating"
-    writeDoubleOption entry.rating
-
-    writer.WritePropertyName "responseRate"
-    writeDoubleOption entry.responseRate
-
-    writer.WritePropertyName "term"
-    writer.WriteStartObject()
-
-    writer.WritePropertyName "id"
-    writer.WriteValue entry.term.id
-
-    writer.WritePropertyName "season"
-    writer.WriteValue(Term.seasonToString entry.term.season)
-
-    writer.WritePropertyName "year"
-    writer.WriteValue entry.term.year
-
-    writer.WriteEndObject()
-
-    writer.WriteEndObject()
+    writeObject([
+        ("courseCode", entry.courseCode :> obj)
+        ("courseName", entry.courseName :> obj)
+        ("department", entry.department :> obj)
+        ("enrolled", entry.enrolled :> obj)
+        ("gpa", entry.gpa :> obj)
+        ("professorName", entry.professorName :> obj)
+        ("rating", entry.rating :> obj)
+        ("responseRate", entry.responseRate :> obj)
+        ("term", entry.term :> obj)
+    ])
 
     sb.ToString()
 

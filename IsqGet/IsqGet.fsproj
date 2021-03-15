@@ -6,8 +6,10 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <Compile Include="Iterator.fs" />
-        <Compile Include="Functional.fs" />
+        <Compile Include="Functional\Iterator.fs" />
+        <Compile Include="Functional\Convert.fs" />
+        <Compile Include="Functional\Transform.fs" />
+        <Compile Include="Functional\Builders.fs" />
         <Compile Include="Str.fs" />
         <Compile Include="Term.fs" />
         <Compile Include="Department.fs" />

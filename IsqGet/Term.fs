@@ -1,11 +1,30 @@
 namespace IsqGet
 
 open System
+open IsqGet.Functional.Builders
+open IsqGet.Functional.Convert
 
 type Season =
     | Spring
     | Summer
-    | Fall   
+    | Fall
+    
+    static member parse (str: string): Season option =
+        match str.ToLower() with
+        | "spring" -> Some Season.Spring
+        | "summer" -> Some Season.Summer
+        | "fall" -> Some Season.Fall
+        | _ -> None
+        
+    static member toString (season: Season): string =
+        season.ToString()
+    
+    override this.ToString (): string =
+        match this with
+        | Season.Spring -> "Spring"
+        | Season.Summer -> "Summer"
+        | Season.Fall -> "Fall"
+        
 
 type Term(year: int, season: Season, id: string) =
     member this.id = id
@@ -17,25 +36,12 @@ type Term(year: int, season: Season, id: string) =
     override this.ToString() =
         sprintf "%A %d" season year
           
-    static member parseSeason(str: string): Season option =
-        match str.ToLower() with
-        | "spring" -> Some Season.Spring
-        | "summer" -> Some Season.Summer
-        | "fall" -> Some Season.Fall
-        | _ -> None
-        
-    static member seasonToString (season: Season): string =
-        match season with
-        | Season.Spring -> "Spring"
-        | Season.Summer -> "Summer"
-        | Season.Fall -> "Fall"
-
     static member fromIdAndString (id: string) (str: string): Term option =
         match str.Split(" ") with
         | [| seasonStr; yearStr |] ->
-            Functional.option {
-                let! season = Term.parseSeason seasonStr
-                let! year = Functional.stringToInt yearStr
+            option {
+                let! season = Season.parse seasonStr
+                let! year = stringToInt yearStr
 
                 return Term(year, season, id)
             }

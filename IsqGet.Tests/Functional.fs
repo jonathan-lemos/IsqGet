@@ -1,6 +1,6 @@
 module IsqGet.Tests.Functional
 
-open IsqGet.Functional
+open IsqGet.Functional.Transform
 open NUnit.Framework
 
 [<Test>]
