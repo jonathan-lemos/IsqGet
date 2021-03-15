@@ -108,9 +108,9 @@ let parseCsvLine (term: Term) (department: Department) (fields: string seq): Res
                  fields.Length)
     else
         result {
-            let courseCode = fields.[0]
-            let courseName = fields.[1]
-            let professorName = fields.[3]
+            let courseCode = fields.[0].Trim()
+            let courseName = fields.[1].Trim()
+            let professorName = fields.[3].Trim()
 
             let gpa = fields.[16] |> stringToDouble
 

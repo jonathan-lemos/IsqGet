@@ -25,7 +25,7 @@ let serializeEntry (entry: Csv.Entry) =
         | :? double as d -> writer.WriteValue d
         | :? Term as t -> writeTerm t
         | :? Department as dept -> writeDepartment dept
-        | :? (Option<obj>) as o ->
+        | :? (Option<double>) as o ->
             match o with
             | Some s -> writeValue s
             | None -> writer.WriteNull()
